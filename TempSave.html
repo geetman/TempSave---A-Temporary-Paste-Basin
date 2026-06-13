@@ -1,0 +1,1551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TempSave — Temporary Paste Basin</title>
+    <style>
+        @font-face {
+            font-family: 'Pixel';
+            src: local('Courier New'), local('Courier'), monospace;
+        }
+
+        @font-face {
+            font-family: 'MS Sans';
+            src: local('MS Sans Serif'), local('Microsoft Sans Serif'), local('Arial'), sans-serif;
+        }
+
+        :root {
+            --win-gray: #c0c0c0;
+            --win-dark: #808080;
+            --win-darker: #404040;
+            --win-light: #dfdfdf;
+            --win-white: #ffffff;
+            --win-blue: #000080;
+            --win-blue-light: #1084d0;
+            --win-black: #000000;
+            --xp-green: #3a6ea5;
+            --xp-blue: #245edb;
+            --xp-taskbar: #235bdc;
+            --bsod-blue: #0000aa;
+            --scanline: rgba(0, 0, 0, 0.03);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            font-family: 'MS Sans', 'Tahoma', sans-serif;
+            background: #008080;
+            cursor: default;
+        }
+
+        /* CRT Effect Overlay */
+        .crt-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 9999;
+            background: 
+                repeating-linear-gradient(
+                    0deg,
+                    transparent,
+                    transparent 2px,
+                    var(--scanline) 2px,
+                    var(--scanline) 4px
+                );
+            animation: flicker 0.15s infinite;
+        }
+
+        @keyframes flicker {
+            0% { opacity: 0.97; }
+            50% { opacity: 1; }
+            100% { opacity: 0.98; }
+        }
+
+        /* Desktop Background — Classic Bliss-inspired but Webcore */
+        .desktop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(ellipse at 20% 50%, rgba(120, 160, 255, 0.3) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 30%, rgba(100, 200, 255, 0.2) 0%, transparent 50%),
+                linear-gradient(180deg, #1a4a7a 0%, #2d6da3 40%, #5a9e4a 40%, #3d7a2d 100%);
+            z-index: 0;
+        }
+
+        .desktop::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: url("data:image/svg+xml,%3Csvg width='100' height='100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.08'/%3E%3C/svg%3E");
+            pointer-events: none;
+        }
+
+        /* Desktop Icons */
+        .desktop-icons {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .desktop-icon {
+            width: 75px;
+            text-align: center;
+            color: white;
+            font-size: 11px;
+            text-shadow: 1px 1px 0 #000;
+            cursor: pointer;
+            user-select: none;
+            padding: 4px;
+            border: 1px solid transparent;
+        }
+
+        .desktop-icon:hover {
+            border: 1px dotted white;
+            background: rgba(0, 0, 128, 0.3);
+        }
+
+        .desktop-icon.selected {
+            border: 1px dotted white;
+            background: rgba(0, 0, 128, 0.5);
+        }
+
+        .desktop-icon .icon-img {
+            width: 32px;
+            height: 32px;
+            margin: 0 auto 4px;
+            background: var(--win-gray);
+            border: 2px outset var(--win-light);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+
+        /* Taskbar */
+        .taskbar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 40px;
+            background: linear-gradient(180deg, #1f91e5 0%, #1a7bc8 5%, #1669b2 100%);
+            border-top: 1px solid #4fa3e8;
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            padding: 0 4px;
+            box-shadow: 0 -1px 2px rgba(0,0,0,0.3);
+        }
+
+        .start-btn {
+            height: 32px;
+            padding: 0 12px;
+            background: linear-gradient(180deg, #3da35a 0%, #2e8a47 100%);
+            border: 1px solid #1e5c30;
+            border-radius: 2px;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            box-shadow: inset 1px 1px 0 rgba(255,255,255,0.3);
+        }
+
+        .start-btn:hover {
+            background: linear-gradient(180deg, #4db86a 0%, #3a9e57 100%);
+        }
+
+        .start-btn:active {
+            box-shadow: inset 1px 1px 3px rgba(0,0,0,0.3);
+        }
+
+        .taskbar-divider {
+            width: 1px;
+            height: 32px;
+            background: #0e5a9e;
+            border-right: 1px solid #4fa3e8;
+            margin: 0 6px;
+        }
+
+        .taskbar-items {
+            flex: 1;
+            display: flex;
+            gap: 4px;
+            overflow: hidden;
+        }
+
+        .taskbar-item {
+            height: 32px;
+            padding: 0 12px;
+            background: linear-gradient(180deg, #3a8fd9 0%, #2a7bc2 100%);
+            border: 1px solid #1a5a8f;
+            border-radius: 2px;
+            color: white;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            max-width: 180px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .taskbar-item.active {
+            background: linear-gradient(180deg, #2a7bc2 0%, #1a5a8f 100%);
+            box-shadow: inset 1px 1px 3px rgba(0,0,0,0.3);
+        }
+
+        .taskbar-item:hover {
+            background: linear-gradient(180deg, #4a9fe9 0%, #3a8fd9 100%);
+        }
+
+        .clock {
+            height: 32px;
+            padding: 0 12px;
+            background: linear-gradient(180deg, #0e8de6 0%, #0b7bc8 100%);
+            border: 1px solid #095a96;
+            color: white;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Classic 95-style Window */
+        .window {
+            position: absolute;
+            background: var(--win-gray);
+            border: 2px outset var(--win-light);
+            box-shadow: 2px 2px 0 var(--win-darker);
+            display: flex;
+            flex-direction: column;
+            min-width: 300px;
+            min-height: 200px;
+            z-index: 10;
+        }
+
+        .window.active {
+            z-index: 100;
+        }
+
+        .title-bar {
+            background: linear-gradient(90deg, var(--win-blue) 0%, var(--win-blue-light) 100%);
+            color: white;
+            padding: 2px 4px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 22px;
+            font-size: 11px;
+            font-weight: bold;
+            cursor: move;
+        }
+
+        .window.active .title-bar {
+            background: linear-gradient(90deg, var(--win-blue) 0%, #0a246a 100%);
+        }
+
+        .title-bar.inactive {
+            background: linear-gradient(90deg, var(--win-dark) 0%, var(--win-gray) 100%);
+        }
+
+        .title-text {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .window-controls {
+            display: flex;
+            gap: 2px;
+        }
+
+        .win-btn {
+            width: 16px;
+            height: 14px;
+            background: var(--win-gray);
+            border: 1px outset var(--win-light);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            color: black;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .win-btn:hover {
+            background: var(--win-light);
+        }
+
+        .win-btn:active {
+            border: 1px inset var(--win-light);
+        }
+
+        .menu-bar {
+            background: var(--win-gray);
+            border-bottom: 1px solid var(--win-dark);
+            padding: 1px 4px;
+            display: flex;
+            gap: 8px;
+            font-size: 11px;
+        }
+
+        .menu-item {
+            padding: 2px 6px;
+            cursor: pointer;
+        }
+
+        .menu-item:hover {
+            background: var(--win-blue);
+            color: white;
+        }
+
+        .window-content {
+            flex: 1;
+            background: white;
+            border: 2px inset var(--win-light);
+            margin: 2px;
+            overflow: auto;
+            position: relative;
+        }
+
+        .paste-area {
+            width: 100%;
+            height: 100%;
+            border: none;
+            outline: none;
+            padding: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            resize: none;
+            background: white;
+            color: black;
+        }
+
+        .paste-area::placeholder {
+            color: #808080;
+            font-style: italic;
+        }
+
+        /* Paste content display */
+        .content-display {
+            width: 100%;
+            height: 100%;
+            padding: 8px;
+            overflow: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            word-break: break-word;
+        }
+
+        .content-display img {
+            max-width: 100%;
+            border: 1px inset var(--win-gray);
+            image-rendering: pixelated;
+        }
+
+        .content-display a {
+            color: #0000ff;
+            text-decoration: underline;
+        }
+
+        .content-display a:hover {
+            color: #ff0000;
+        }
+
+        /* Status bar */
+        .status-bar {
+            background: var(--win-gray);
+            border-top: 1px solid var(--win-light);
+            padding: 2px 4px;
+            font-size: 11px;
+            display: flex;
+            gap: 4px;
+        }
+
+        .status-panel {
+            border: 1px inset var(--win-light);
+            padding: 1px 4px;
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Dialog Box */
+        .dialog-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            z-index: 10001;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .dialog-overlay.show {
+            display: flex;
+        }
+
+        .dialog-box {
+            background: var(--win-gray);
+            border: 2px outset var(--win-light);
+            box-shadow: 4px 4px 0 var(--win-darker);
+            min-width: 320px;
+            max-width: 400px;
+        }
+
+        .dialog-content {
+            padding: 16px;
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+        }
+
+        .dialog-icon {
+            font-size: 32px;
+            flex-shrink: 0;
+        }
+
+        .dialog-text {
+            font-size: 11px;
+            line-height: 1.5;
+        }
+
+        .dialog-text h3 {
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+
+        .dialog-buttons {
+            padding: 8px 16px;
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            border-top: 1px solid var(--win-light);
+        }
+
+        .btn {
+            padding: 4px 16px;
+            background: var(--win-gray);
+            border: 2px outset var(--win-light);
+            font-size: 11px;
+            font-family: 'MS Sans', sans-serif;
+            cursor: pointer;
+            min-width: 75px;
+        }
+
+        .btn:hover {
+            background: var(--win-light);
+        }
+
+        .btn:active {
+            border: 2px inset var(--win-light);
+        }
+
+        .btn-primary {
+            background: var(--win-gray);
+        }
+
+        /* BSOD Easter Egg */
+        .bsod {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bsod-blue);
+            color: white;
+            font-family: 'Lucida Console', 'Courier New', monospace;
+            padding: 40px;
+            z-index: 99999;
+            display: none;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .bsod.show {
+            display: block;
+        }
+
+        /* Start Menu */
+        .start-menu {
+            position: fixed;
+            bottom: 50px;
+            left: 0;
+            width: 200px;
+            background: var(--win-gray);
+            border: 2px outset var(--win-light);
+            z-index: 10001;
+            display: none;
+            box-shadow: 2px -2px 0 var(--win-darker);
+        }
+
+        .start-menu.show {
+            display: block;
+        }
+
+        .start-header {
+            background: linear-gradient(180deg, #1f91e5 0%, #1669b2 100%);
+            color: white;
+            padding: 6px 8px;
+            font-size: 14px;
+            font-weight: bold;
+            font-style: italic;
+        }
+
+        .start-item {
+            padding: 6px 8px 6px 28px;
+            font-size: 11px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .start-item:hover {
+            background: var(--win-blue);
+            color: white;
+        }
+
+        .start-divider {
+            height: 1px;
+            background: var(--win-dark);
+            border-bottom: 1px solid var(--win-light);
+            margin: 2px 4px;
+        }
+
+        /* Marquee banner */
+        .marquee-container {
+            background: black;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            padding: 2px;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        .marquee-text {
+            display: inline-block;
+            animation: marquee 20s linear infinite;
+        }
+
+        @keyframes marquee {
+            0% { transform: translateX(100%); }
+            100% { transform: translateX(-100%); }
+        }
+
+        /* Glitch text effect */
+        .glitch {
+            position: relative;
+        }
+
+        .glitch::before,
+        .glitch::after {
+            content: attr(data-text);
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .glitch::before {
+            left: 2px;
+            text-shadow: -1px 0 #ff00ff;
+            clip: rect(24px, 550px, 90px, 0);
+            animation: glitch-anim-2 3s infinite linear alternate-reverse;
+        }
+
+        .glitch::after {
+            left: -2px;
+            text-shadow: -1px 0 #00ffff;
+            clip: rect(85px, 550px, 140px, 0);
+            animation: glitch-anim 2.5s infinite linear alternate-reverse;
+        }
+
+        @keyframes glitch-anim {
+            0% { clip: rect(14px, 9999px, 127px, 0); }
+            20% { clip: rect(84px, 9999px, 23px, 0); }
+            40% { clip: rect(3px, 9999px, 87px, 0); }
+            60% { clip: rect(67px, 9999px, 12px, 0); }
+            80% { clip: rect(29px, 9999px, 96px, 0); }
+            100% { clip: rect(45px, 9999px, 5px, 0); }
+        }
+
+        @keyframes glitch-anim-2 {
+            0% { clip: rect(65px, 9999px, 119px, 0); }
+            20% { clip: rect(12px, 9999px, 78px, 0); }
+            40% { clip: rect(89px, 9999px, 34px, 0); }
+            60% { clip: rect(2px, 9999px, 56px, 0); }
+            80% { clip: rect(43px, 9999px, 91px, 0); }
+            100% { clip: rect(76px, 9999px, 18px, 0); }
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 16px;
+            background: var(--win-gray);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--win-gray);
+            border: 2px outset var(--win-light);
+        }
+
+        ::-webkit-scrollbar-button {
+            background: var(--win-gray);
+            border: 2px outset var(--win-light);
+            height: 16px;
+        }
+
+        /* Loading/Processing animation */
+        .processing {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            font-size: 11px;
+            color: var(--win-dark);
+        }
+
+        .processing::after {
+            content: '';
+            display: block;
+            width: 32px;
+            height: 32px;
+            margin: 8px auto;
+            border: 2px solid var(--win-gray);
+            border-top-color: var(--win-blue);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Empty state */
+        .empty-state {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: var(--win-dark);
+            font-size: 11px;
+        }
+
+        .empty-state .big-icon {
+            font-size: 48px;
+            margin-bottom: 8px;
+            opacity: 0.5;
+        }
+
+        /* Tooltip */
+        .tooltip {
+            position: fixed;
+            background: #ffffe1;
+            border: 1px solid #000;
+            padding: 2px 6px;
+            font-size: 11px;
+            z-index: 10002;
+            pointer-events: none;
+            display: none;
+        }
+
+        /* Resize handle */
+        .resize-handle {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 16px;
+            height: 16px;
+            cursor: se-resize;
+            background: linear-gradient(135deg, transparent 50%, var(--win-dark) 50%);
+            z-index: 5;
+        }
+
+        /* Selection highlight */
+        ::selection {
+            background: var(--win-blue);
+            color: white;
+        }
+
+        /* Pixel art decorations */
+        .pixel-border {
+            border: 2px solid;
+            border-color: var(--win-light) var(--win-dark) var(--win-dark) var(--win-light);
+        }
+
+        .pixel-border-inset {
+            border: 2px solid;
+            border-color: var(--win-dark) var(--win-light) var(--win-light) var(--win-dark);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .window {
+                min-width: 250px;
+            }
+            .desktop-icons {
+                display: none;
+            }
+        }
+
+        /* Animations */
+        .window-opening {
+            animation: windowOpen 0.15s ease-out;
+        }
+
+        @keyframes windowOpen {
+            from {
+                transform: scale(0.8);
+                opacity: 0;
+            }
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .window-closing {
+            animation: windowClose 0.1s ease-in forwards;
+        }
+
+        @keyframes windowClose {
+            from {
+                transform: scale(1);
+                opacity: 1;
+            }
+            to {
+                transform: scale(0.8);
+                opacity: 0;
+            }
+        }
+
+        /* Error message toast */
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--win-gray);
+            border: 2px outset var(--win-light);
+            padding: 8px 12px;
+            font-size: 11px;
+            z-index: 10002;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 2px 2px 0 var(--win-darker);
+        }
+
+        .toast.show {
+            display: flex;
+            animation: toastSlide 0.3s ease-out;
+        }
+
+        @keyframes toastSlide {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        /* Custom cursor for drag */
+        .dragging {
+            cursor: move !important;
+        }
+
+        /* Content type indicators */
+        .type-badge {
+            display: inline-block;
+            padding: 1px 4px;
+            background: var(--win-gray);
+            border: 1px outset var(--win-light);
+            font-size: 10px;
+            margin-right: 4px;
+            font-family: 'MS Sans', sans-serif;
+        }
+
+        /* ASCII art decoration */
+        .ascii-deco {
+            font-family: 'Courier New', monospace;
+            font-size: 10px;
+            line-height: 1.2;
+            color: var(--win-dark);
+            white-space: pre;
+            opacity: 0.6;
+        }
+
+        /* Retro button with icon */
+        .icon-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            background: var(--win-gray);
+            border: 2px outset var(--win-light);
+            font-size: 11px;
+            cursor: pointer;
+            font-family: 'MS Sans', sans-serif;
+        }
+
+        .icon-btn:hover {
+            background: var(--win-light);
+        }
+
+        .icon-btn:active {
+            border: 2px inset var(--win-light);
+        }
+
+        /* Grid pattern for empty areas */
+        .grid-bg {
+            background-image: 
+                linear-gradient(var(--win-light) 1px, transparent 1px),
+                linear-gradient(90deg, var(--win-light) 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- CRT Overlay -->
+    <div class="crt-overlay"></div>
+
+    <!-- Desktop Background -->
+    <div class="desktop"></div>
+
+    <!-- Desktop Icons -->
+    <div class="desktop-icons">
+        <div class="desktop-icon" onclick="createNewSpace()">
+            <div class="icon-img">📋</div>
+            <div>New Space</div>
+        </div>
+        <div class="desktop-icon" onclick="showAbout()">
+            <div class="icon-img">❓</div>
+            <div>About</div>
+        </div>
+        <div class="desktop-icon" onclick="triggerBSOD()">
+            <div class="icon-img">💻</div>
+            <div>My Computer</div>
+        </div>
+        <div class="desktop-icon" onclick="showRecycleBin()">
+            <div class="icon-img">🗑️</div>
+            <div>Recycle Bin</div>
+        </div>
+    </div>
+
+    <!-- Windows Container -->
+    <div id="windows-container"></div>
+
+    <!-- Taskbar -->
+    <div class="taskbar">
+        <button class="start-btn" onclick="toggleStartMenu()">
+            <span>🪟</span>
+            <span>start</span>
+        </button>
+        <div class="taskbar-divider"></div>
+        <div class="taskbar-items" id="taskbar-items"></div>
+        <div class="taskbar-divider"></div>
+        <div class="clock" id="clock">
+            <span>🔊</span>
+            <span id="time">12:00 PM</span>
+        </div>
+    </div>
+
+    <!-- Start Menu -->
+    <div class="start-menu" id="start-menu">
+        <div class="start-header">TempSave</div>
+        <div class="start-item" onclick="createNewSpace(); toggleStartMenu();">
+            <span>📋</span> New Paste Space
+        </div>
+        <div class="start-item" onclick="showAbout(); toggleStartMenu();">
+            <span>❓</span> About
+        </div>
+        <div class="start-divider"></div>
+        <div class="start-item" onclick="triggerBSOD(); toggleStartMenu();">
+            <span>⚠️</span> System Error
+        </div>
+        <div class="start-item" onclick="location.reload(); toggleStartMenu();">
+            <span>🔄</span> Restart
+        </div>
+        <div class="start-divider"></div>
+        <div class="start-item" onclick="toggleStartMenu()">
+            <span>🚪</span> Log Off
+        </div>
+    </div>
+
+    <!-- Dialog Overlay -->
+    <div class="dialog-overlay" id="dialog-overlay">
+        <div class="dialog-box" id="dialog-box">
+            <div class="dialog-content">
+                <div class="dialog-icon" id="dialog-icon">ℹ️</div>
+                <div class="dialog-text" id="dialog-text">
+                    <h3>Welcome to TempSave</h3>
+                    <p>A temporary paste basin for the modern web.</p>
+                </div>
+            </div>
+            <div class="dialog-buttons" id="dialog-buttons">
+                <button class="btn btn-primary" onclick="closeDialog()">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- BSOD Easter Egg -->
+    <div class="bsod" id="bsod" onclick="closeBSOD()">
+        <div style="font-size: 18px; margin-bottom: 20px;">:(</div>
+        <div style="margin-bottom: 20px;">Your PC ran into a problem and needs to restart. We're just collecting some error info, and then we'll restart for you.</div>
+        <div style="margin-bottom: 40px;">0% complete</div>
+        <div style="display: flex; gap: 20px; align-items: flex-start;">
+            <div style="font-size: 48px;">QR_CODE</div>
+            <div>
+                <div style="margin-bottom: 10px;">For more information about this issue and possible fixes, visit https://www.windows.com/stopcode</div>
+                <div style="margin-bottom: 10px;">If you call a support person, give them this info:</div>
+                <div>Stop code: CLIPBOARD_OVERFLOW</div>
+            </div>
+        </div>
+        <div style="position: absolute; bottom: 40px; font-size: 12px; opacity: 0.7;">
+            Press any key to continue . . .
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast">
+        <span id="toast-icon">✅</span>
+        <span id="toast-message">Copied to clipboard!</span>
+    </div>
+
+    <script>
+        // Global state
+        let windows = [];
+        let activeWindowId = null;
+        let windowCounter = 0;
+        let zIndexCounter = 100;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            updateClock();
+            setInterval(updateClock, 1000);
+            
+            // Create initial window
+            createNewSpace();
+            
+            // Global paste handler
+            document.addEventListener('paste', handleGlobalPaste);
+            
+            // Close start menu on outside click
+            document.addEventListener('click', (e) => {
+                const startMenu = document.getElementById('start-menu');
+                const startBtn = document.querySelector('.start-btn');
+                if (!startMenu.contains(e.target) && !startBtn.contains(e.target)) {
+                    startMenu.classList.remove('show');
+                }
+            });
+
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                if (e.ctrlKey && e.key === 'n') {
+                    e.preventDefault();
+                    createNewSpace();
+                }
+                if (e.key === 'Escape') {
+                    closeDialog();
+                    document.getElementById('start-menu').classList.remove('show');
+                }
+            });
+        });
+
+        function updateClock() {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('en-US', { 
+                hour: 'numeric', 
+                minute: '2-digit',
+                hour12: true 
+            });
+            document.getElementById('time').textContent = timeStr;
+        }
+
+        function toggleStartMenu() {
+            document.getElementById('start-menu').classList.toggle('show');
+        }
+
+        function createNewSpace() {
+            windowCounter++;
+            const id = `window-${windowCounter}`;
+            const title = `Paste Space ${windowCounter}`;
+            
+            const windowEl = document.createElement('div');
+            windowEl.className = 'window window-opening';
+            windowEl.id = id;
+            
+            // Random position with some bounds
+            const maxX = Math.max(50, window.innerWidth - 500);
+            const maxY = Math.max(50, window.innerHeight - 400);
+            const x = 20 + (windowCounter * 20) % maxX;
+            const y = 20 + (windowCounter * 20) % maxY;
+            
+            windowEl.style.left = `${x}px`;
+            windowEl.style.top = `${y}px`;
+            windowEl.style.width = '500px';
+            windowEl.style.height = '350px';
+            windowEl.style.zIndex = ++zIndexCounter;
+            
+            windowEl.innerHTML = `
+                <div class="title-bar" onmousedown="startDrag(event, '${id}')">
+                    <div class="title-text">
+                        <span>📋</span>
+                        <span>${title}</span>
+                    </div>
+                    <div class="window-controls">
+                        <button class="win-btn" onclick="minimizeWindow('${id}')" title="Minimize">_</button>
+                        <button class="win-btn" onclick="maximizeWindow('${id}')" title="Maximize">□</button>
+                        <button class="win-btn" onclick="closeWindow('${id}')" title="Close">×</button>
+                    </div>
+                </div>
+                <div class="menu-bar">
+                    <span class="menu-item" onclick="pasteToWindow('${id}')">Paste</span>
+                    <span class="menu-item" onclick="copyFromWindow('${id}')">Copy</span>
+                    <span class="menu-item" onclick="clearWindow('${id}')">Clear</span>
+                    <span class="menu-item" onclick="duplicateWindow('${id}')">Duplicate</span>
+                </div>
+                <div class="window-content" id="content-${id}" onclick="focusWindow('${id}')">
+                    <div class="empty-state" id="empty-${id}">
+                        <div class="big-icon">📋</div>
+                        <div><strong>Ctrl+V</strong> to paste anything</div>
+                        <div style="margin-top:4px; font-size:10px; color:#999;">Images, links, text, files...</div>
+                    </div>
+                    <div class="content-display" id="display-${id}" style="display:none;"></div>
+                </div>
+                <div class="status-bar">
+                    <div class="status-panel" id="status-${id}">Ready</div>
+                    <div class="status-panel" style="flex:0 0 auto; min-width:80px;" id="type-${id}">Empty</div>
+                    <div class="status-panel" style="flex:0 0 auto; min-width:60px;" id="size-${id}">0 B</div>
+                </div>
+                <div class="resize-handle" onmousedown="startResize(event, '${id}')"></div>
+            `;
+            
+            document.getElementById('windows-container').appendChild(windowEl);
+            
+            // Add click to focus
+            windowEl.addEventListener('mousedown', () => focusWindow(id));
+            
+            windows.push({ id, title, minimized: false, maximized: false });
+            focusWindow(id);
+            addTaskbarItem(id, title);
+            
+            // Auto-focus the window for immediate paste
+            setTimeout(() => {
+                showToast('📋', 'Space ready! Paste anything with Ctrl+V');
+            }, 300);
+        }
+
+        function focusWindow(id) {
+            const windowEl = document.getElementById(id);
+            if (!windowEl) return;
+            
+            // Remove active from all
+            document.querySelectorAll('.window').forEach(w => {
+                w.classList.remove('active');
+                w.querySelector('.title-bar').classList.add('inactive');
+            });
+            
+            // Add active to current
+            windowEl.classList.add('active');
+            windowEl.querySelector('.title-bar').classList.remove('inactive');
+            windowEl.style.zIndex = ++zIndexCounter;
+            activeWindowId = id;
+            
+            // Update taskbar
+            document.querySelectorAll('.taskbar-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.dataset.windowId === id) {
+                    item.classList.add('active');
+                }
+            });
+        }
+
+        function closeWindow(id) {
+            const windowEl = document.getElementById(id);
+            if (!windowEl) return;
+            
+            windowEl.classList.add('window-closing');
+            setTimeout(() => {
+                windowEl.remove();
+                windows = windows.filter(w => w.id !== id);
+                removeTaskbarItem(id);
+                if (activeWindowId === id) {
+                    activeWindowId = null;
+                }
+            }, 100);
+        }
+
+        function minimizeWindow(id) {
+            const windowEl = document.getElementById(id);
+            const winData = windows.find(w => w.id === id);
+            if (!windowEl || !winData) return;
+            
+            if (winData.minimized) {
+                windowEl.style.display = 'flex';
+                winData.minimized = false;
+                focusWindow(id);
+            } else {
+                windowEl.style.display = 'none';
+                winData.minimized = true;
+                document.querySelectorAll('.taskbar-item').forEach(item => {
+                    if (item.dataset.windowId === id) {
+                        item.classList.remove('active');
+                    }
+                });
+            }
+        }
+
+        function maximizeWindow(id) {
+            const windowEl = document.getElementById(id);
+            const winData = windows.find(w => w.id === id);
+            if (!windowEl || !winData) return;
+            
+            if (winData.maximized) {
+                windowEl.style.width = '500px';
+                windowEl.style.height = '350px';
+                windowEl.style.left = '50px';
+                windowEl.style.top = '50px';
+                winData.maximized = false;
+            } else {
+                windowEl.style.width = '100%';
+                windowEl.style.height = 'calc(100% - 28px)';
+                windowEl.style.left = '0';
+                windowEl.style.top = '0';
+                winData.maximized = true;
+            }
+        }
+
+        function duplicateWindow(id) {
+            const display = document.getElementById(`display-${id}`);
+            const empty = document.getElementById(`empty-${id}`);
+            
+            if (empty.style.display !== 'none' && display.innerHTML === '') {
+                showToast('⚠️', 'Nothing to duplicate!');
+                return;
+            }
+            
+            createNewSpace();
+            const newId = `window-${windowCounter}`;
+            const newDisplay = document.getElementById(`display-${newId}`);
+            const newEmpty = document.getElementById(`empty-${newId}`);
+            
+            newDisplay.innerHTML = display.innerHTML;
+            newDisplay.style.display = 'block';
+            newEmpty.style.display = 'none';
+            
+            updateStatus(newId, display.innerHTML);
+            showToast('📋', 'Space duplicated!');
+        }
+
+        function addTaskbarItem(id, title) {
+            const items = document.getElementById('taskbar-items');
+            const item = document.createElement('div');
+            item.className = 'taskbar-item active';
+            item.dataset.windowId = id;
+            item.innerHTML = `<span>📋</span> <span>${title}</span>`;
+            item.onclick = () => {
+                const win = windows.find(w => w.id === id);
+                if (win && win.minimized) {
+                    minimizeWindow(id); // restore
+                } else {
+                    focusWindow(id);
+                }
+            };
+            items.appendChild(item);
+        }
+
+        function removeTaskbarItem(id) {
+            const item = document.querySelector(`.taskbar-item[data-window-id="${id}"]`);
+            if (item) item.remove();
+        }
+
+        // Drag functionality
+        let dragWindow = null;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+
+        function startDrag(e, id) {
+            // Don't drag if clicking controls
+            if (e.target.closest('.window-controls')) return;
+            
+            const windowEl = document.getElementById(id);
+            const winData = windows.find(w => w.id === id);
+            if (winData && winData.maximized) return;
+            
+            dragWindow = windowEl;
+            dragOffsetX = e.clientX - windowEl.offsetLeft;
+            dragOffsetY = e.clientY - windowEl.offsetTop;
+            document.body.classList.add('dragging');
+            focusWindow(id);
+        }
+
+        document.addEventListener('mousemove', (e) => {
+            if (!dragWindow) return;
+            e.preventDefault();
+            dragWindow.style.left = `${e.clientX - dragOffsetX}px`;
+            dragWindow.style.top = `${e.clientY - dragOffsetY}px`;
+        });
+
+        document.addEventListener('mouseup', () => {
+            dragWindow = null;
+            document.body.classList.remove('dragging');
+        });
+
+        // Resize functionality
+        let resizeWindow = null;
+        let resizeStartX = 0;
+        let resizeStartY = 0;
+        let resizeStartWidth = 0;
+        let resizeStartHeight = 0;
+
+        function startResize(e, id) {
+            resizeWindow = document.getElementById(id);
+            resizeStartX = e.clientX;
+            resizeStartY = e.clientY;
+            resizeStartWidth = resizeWindow.offsetWidth;
+            resizeStartHeight = resizeWindow.offsetHeight;
+            e.preventDefault();
+        }
+
+        document.addEventListener('mousemove', (e) => {
+            if (!resizeWindow) return;
+            const newWidth = Math.max(300, resizeStartWidth + (e.clientX - resizeStartX));
+            const newHeight = Math.max(200, resizeStartHeight + (e.clientY - resizeStartY));
+            resizeWindow.style.width = `${newWidth}px`;
+            resizeWindow.style.height = `${newHeight}px`;
+        });
+
+        document.addEventListener('mouseup', () => {
+            resizeWindow = null;
+        });
+
+        // Paste handling
+        async function handleGlobalPaste(e) {
+            if (!activeWindowId) return;
+            
+            const display = document.getElementById(`display-${activeWindowId}`);
+            const empty = document.getElementById(`empty-${activeWindowId}`);
+            if (!display || !empty) return;
+            
+            e.preventDefault();
+            
+            const items = e.clipboardData.items;
+            let handled = false;
+            
+            for (const item of items) {
+                if (item.type.indexOf('image') !== -1) {
+                    const blob = item.getAsFile();
+                    const url = URL.createObjectURL(blob);
+                    display.innerHTML = `<img src="${url}" alt="Pasted image" style="max-width:100%;">`;
+                    handled = true;
+                } else if (item.type === 'text/html') {
+                    const html = e.clipboardData.getData('text/html');
+                    display.innerHTML = sanitizeHTML(html);
+                    handled = true;
+                } else if (item.type === 'text/plain') {
+                    const text = e.clipboardData.getData('text/plain');
+                    // Check if it's a URL
+                    if (isValidURL(text)) {
+                        display.innerHTML = `<div class="type-badge">🔗 LINK</div><a href="${escapeHtml(text)}" target="_blank">${escapeHtml(text)}</a>`;
+                    } else {
+                        display.innerHTML = `<pre style="white-space:pre-wrap; word-break:break-word; margin:0;">${escapeHtml(text)}</pre>`;
+                    }
+                    handled = true;
+                }
+            }
+            
+            if (handled) {
+                empty.style.display = 'none';
+                display.style.display = 'block';
+                updateStatus(activeWindowId, display.innerHTML);
+                showToast('✅', 'Content pasted!');
+            }
+        }
+
+        function pasteToWindow(id) {
+            focusWindow(id);
+            showToast('📋', 'Press Ctrl+V to paste');
+        }
+
+        async function copyFromWindow(id) {
+            const display = document.getElementById(`display-${id}`);
+            const empty = document.getElementById(`empty-${id}`);
+            
+            if (empty.style.display !== 'none' || !display.innerHTML) {
+                showToast('⚠️', 'Nothing to copy!');
+                return;
+            }
+            
+            try {
+                // Try to get text content
+                const text = display.innerText || display.textContent;
+                await navigator.clipboard.writeText(text);
+                showToast('✅', 'Copied to clipboard!');
+            } catch (err) {
+                // Fallback: create temporary textarea
+                const textarea = document.createElement('textarea');
+                textarea.value = display.innerText || display.textContent;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                showToast('✅', 'Copied to clipboard!');
+            }
+        }
+
+        function clearWindow(id) {
+            const display = document.getElementById(`display-${id}`);
+            const empty = document.getElementById(`empty-${id}`);
+            const status = document.getElementById(`status-${id}`);
+            
+            display.innerHTML = '';
+            display.style.display = 'none';
+            empty.style.display = 'block';
+            status.textContent = 'Cleared';
+            document.getElementById(`type-${id}`).textContent = 'Empty';
+            document.getElementById(`size-${id}`).textContent = '0 B';
+            
+            showToast('🗑️', 'Space cleared');
+        }
+
+        function updateStatus(id, content) {
+            const status = document.getElementById(`status-${id}`);
+            const typeBadge = document.getElementById(`type-${id}`);
+            const sizeBadge = document.getElementById(`size-${id}`);
+            
+            const bytes = new Blob([content]).size;
+            sizeBadge.textContent = formatBytes(bytes);
+            
+            if (content.includes('<img')) {
+                typeBadge.textContent = 'Image';
+                status.textContent = 'Image pasted';
+            } else if (content.includes('<a ')) {
+                typeBadge.textContent = 'Link';
+                status.textContent = 'Link pasted';
+            } else if (content.includes('<pre>') || content.includes('<table')) {
+                typeBadge.textContent = 'Text';
+                status.textContent = 'Text pasted';
+            } else if (content.includes('<div')) {
+                typeBadge.textContent = 'HTML';
+                status.textContent = 'HTML pasted';
+            } else {
+                typeBadge.textContent = 'Mixed';
+                status.textContent = 'Content pasted';
+            }
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        function isValidURL(string) {
+            try {
+                new URL(string);
+                return true;
+            } catch (_) {
+                return false;
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function sanitizeHTML(html) {
+            // Basic sanitization - in a real app you'd want DOMPurify
+            const allowed = ['b', 'i', 'u', 's', 'strong', 'em', 'a', 'br', 'p', 'div', 'span', 'table', 'tr', 'td', 'th', 'tbody', 'thead'];
+            const temp = document.createElement('div');
+            temp.innerHTML = html;
+            
+            const walk = (node) => {
+                if (node.nodeType === 3) return;
+                if (node.nodeType === 1) {
+                    const tag = node.tagName.toLowerCase();
+                    if (!allowed.includes(tag)) {
+                        node.replaceWith(...node.childNodes);
+                        return;
+                    }
+                    // Remove event handlers and dangerous attributes
+                    Array.from(node.attributes).forEach(attr => {
+                        if (attr.name.startsWith('on') || attr.name === 'href' && !node.getAttribute('href').startsWith('http')) {
+                            node.removeAttribute(attr.name);
+                        }
+                    });
+                }
+                Array.from(node.childNodes).forEach(walk);
+            };
+            
+            Array.from(temp.childNodes).forEach(walk);
+            return temp.innerHTML;
+        }
+
+        // Dialog functions
+        function showDialog(title, message, icon = 'ℹ️', buttons = [{text: 'OK', action: closeDialog}]) {
+            document.getElementById('dialog-icon').textContent = icon;
+            document.getElementById('dialog-text').innerHTML = `<h3>${title}</h3><p>${message}</p>`;
+            
+            const btnContainer = document.getElementById('dialog-buttons');
+            btnContainer.innerHTML = '';
+            buttons.forEach(btn => {
+                const button = document.createElement('button');
+                button.className = 'btn btn-primary';
+                button.textContent = btn.text;
+                button.onclick = btn.action;
+                btnContainer.appendChild(button);
+            });
+            
+            document.getElementById('dialog-overlay').classList.add('show');
+        }
+
+        function closeDialog() {
+            document.getElementById('dialog-overlay').classList.remove('show');
+        }
+
+        function showAbout() {
+            showDialog(
+                'About TempSave',
+                'TempSave v1.0 : A temporary paste basin.<br><br>No data is saved. Everything exists only in memory and disappears when you close or refresh the tab.<br><br>Supports: Text, Images, Links, HTML, Tables, and more.<br><br>Made by Krishaang Kaushik as a personal project.<br><br>Follows: CC BY 4.0',
+			);
+        }
+
+        function showRecycleBin() {
+            showDialog(
+                'Recycle Bin',
+                'The Recycle Bin is empty.<br><br>Nothing is ever truly deleted... because nothing was ever saved. 🗑️',
+                '🗑️'
+            );
+        }
+
+        // BSOD Easter Egg
+        function triggerBSOD() {
+            document.getElementById('bsod').classList.add('show');
+            // Play a beep sound if possible
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                oscillator.frequency.value = 800;
+                oscillator.type = 'square';
+                gainNode.gain.value = 0.1;
+                oscillator.start();
+                setTimeout(() => oscillator.stop(), 200);
+            } catch (e) {}
+        }
+
+        function closeBSOD() {
+            document.getElementById('bsod').classList.remove('show');
+        }
+
+        // Toast
+        let toastTimeout;
+        function showToast(icon, message) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-icon').textContent = icon;
+            document.getElementById('toast-message').textContent = message;
+            
+            toast.classList.add('show');
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2500);
+        }
+
+        // Handle dropped files
+        document.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            document.body.style.background = '#006060';
+        });
+
+        document.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            document.body.style.background = '#008080';
+        });
+
+        document.addEventListener('drop', (e) => {
+            e.preventDefault();
+            document.body.style.background = '#008080';
+            
+            if (!activeWindowId) {
+                createNewSpace();
+            }
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                const file = files[0];
+                const display = document.getElementById(`display-${activeWindowId}`);
+                const empty = document.getElementById(`empty-${activeWindowId}`);
+                
+                if (file.type.startsWith('image/')) {
+                    const url = URL.createObjectURL(file);
+                    display.innerHTML = `<img src="${url}" alt="${file.name}" style="max-width:100%;">`;
+                } else if (file.type.startsWith('text/')) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        display.innerHTML = `<pre style="white-space:pre-wrap;">${escapeHtml(e.target.result)}</pre>`;
+                    };
+                    reader.readAsText(file);
+                } else {
+                    display.innerHTML = `<div class="type-badge">📁 FILE</div><strong>${escapeHtml(file.name)}</strong><br>Type: ${file.type}<br>Size: ${formatBytes(file.size)}`;
+                }
+                
+                empty.style.display = 'none';
+                display.style.display = 'block';
+                updateStatus(activeWindowId, display.innerHTML);
+                showToast('✅', 'File dropped!');
+            }
+        });
+    </script>
+</body>
+</html>
